@@ -1,3 +1,4 @@
+import math
 from ftplib import FTP
 from os.path import splitext
 import subprocess
@@ -24,9 +25,19 @@ for file in files:
 			lengthout = subprocess.Popen(["ffmpeg","-i",file],stderr=subprocess.PIPE).communicate()[1].split()
 			duration = lengthout[lengthout.index('Duration:')+1].rstrip(',')
 			durations=duration.split(":")
-			totallength = (int(durations[0])*3600)+(int(durations[1])*60)+float(durations[2])
-			print durations
-			print totallength
+			totallength = int((int(durations[0])*3600)+(int(durations[1])*60)+float(durations[2]))
+			print "Total video length is: "+str(totallength)+"s"
+			interval = totallength / 5;
+			intervals = [interval,interval*2,interval*3,interval*4]
+			for idx,val in enumerate(intervals):
+				posterfile = file+"_"+str(idx)+".jpg"
+				print "Generating "+posterfile
+				cmd = ["ffmpeg","-i",file,"-an","-ss",str(val),"-f","mjpeg","-t","1","-r","1","-y",posterfile]
+				print cmd
+				outputs = subprocess.Popen(cmd,stderr=subprocess.PIPE).communicate()[1]
+				print outputs
+				ftp.storbinary('STOR '+posterfile,open(posterfile,'rb'))
+
 		
 ftp.close()
 
