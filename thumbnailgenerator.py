@@ -9,12 +9,17 @@ number_of_posterfiles=4
 ftp = FTP('ftp.streaming.thomsonreuters2.netdna-cdn.com')
 ftp_username = 'streaming.thomsonreuters2'
 ftp_password = 'Gadget55'
-ftp.login(ftp_username,ftp_password)
-
-files = ftp.nlst()
+try:
+	ftp.login(ftp_username,ftp_password)
+	files = ftp.nlst()
+except:
+	print "Unexpected error connecting to FTP:" +sys.exc_info()[0]
+	ftp.close()
+	raise
 
 for file in files:
-	print file
+
+	print "On the FTP server: "+file
 	filename,extension = splitext(file)
 	if extension == '.mp4':
 		print "File is an mp4 video"
@@ -33,7 +38,7 @@ for file in files:
 
 			interval = totallength / (number_of_posterfiles+1);
 			intervals = []
-			for x in range(number_of_posterfiles)
+			for x in range(number_of_posterfiles):
 				intervals.append(interval*(x+1))
 			for idx,val in enumerate(intervals):
 				posterfile = file+"_"+str(idx)+".jpg"
