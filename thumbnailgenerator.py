@@ -17,7 +17,7 @@ for file in files:
 
 	print "On S3: "+file
 	filename,extension = splitext(file)
-	if extension in ['.mp4','.m4v','.mov','.mkv']:
+	if extension in ['.mp4','.m4v','.mov','.mkv'] and not os.path.exists(posterfiledir+file+'_0.jpg'):
 		print "File is a video. Copying to "+tempdir+file
 		shutil.copy2(directory+file,tempdir+file)
 		print "Finding length:" 
@@ -46,4 +46,5 @@ for file in files:
 			print th_cmd
 			th_outputs = subprocess.Popen(th_cmd,stderr=subprocess.PIPE).communicate()[1]
 			print th_outputs
+		os.delete(tempdir+file)
 
