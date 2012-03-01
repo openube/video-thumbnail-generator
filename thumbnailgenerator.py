@@ -43,7 +43,7 @@ for file in files:
 			for idx,val in enumerate(intervals):
 				posterfile = file+"_"+str(idx)+".jpg"
 				print "Generating "+posterfile
-				cmd = ["ffmpeg","-i",file,"-an","-ss",str(val),"-f","mjpeg","-t","1","-r","1","-y",posterfile]
+				cmd = ["ffmpeg","-i",file,"-an","-ss",str(val),"-f","mjpeg","-qmin","0.8","-qmax","0.8","-t","1","-r","1","-y",posterfile]
 				print cmd
 				outputs = subprocess.Popen(cmd,stderr=subprocess.PIPE).communicate()[1]
 				print outputs
