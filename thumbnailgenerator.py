@@ -46,5 +46,5 @@ for file in files:
 			print th_cmd
 			th_outputs = subprocess.Popen(th_cmd,stderr=subprocess.PIPE).communicate()[1]
 			print th_outputs
-		os.delete(tempdir+file)
+		os.remove(tempdir+file)
 
