@@ -7,7 +7,7 @@ import simplejson as json
 import subprocess
 import os
 from progress_bar import ProgressBar
-
+import sys
 
 number_of_posterfiles=8
 thumbnail_dimension='160x90'
@@ -25,11 +25,13 @@ meta = {}
 
 total_files = len(files)
 current=0;
-
+p = ProgressBar(total_files)
 for file in files:
 	current+=1	
-	print "On S3: "+file
-	print "PROGRESS: "+str(float(1.0*current/total_files)*100)+"%"
+#	print "On S3: "+file
+	p.update_time(current)
+	sys.stdout.write(str(p)+'\r')
+	sys.stdout.flush()
 	filename,extension = splitext(file)
 	if extension in ['.mp4','.m4v','.mov','.mkv']:
 		if not os.path.exists(posterfiledir+file+'_0.jpg') or not os.path.exists(metafile):
@@ -38,15 +40,13 @@ for file in files:
 				meta = json.load(f)
 				f.close()
 
-			print "File is a video. Copying to "+tempdir+file
-			shutil.copy2(directory+file,tempdir+file)
 			
-			print "Finding length:" 
+#			print "Finding length:" 
 			
-			metadata_str = subprocess.Popen(['ffmpeg','-i',tempdir+file],stderr=subprocess.PIPE).communicate()[1]
+			metadata_str = subprocess.Popen(['ffmpeg','-i',directory+file],stderr=subprocess.PIPE).communicate()[1]
 			metadata_parts = re.findall(r'[^,\|\n]+',metadata_str.replace(': ','|'))
 
-			print "Extracting metadata:"
+#			print "Extracting metadata:"
 			metadata_start_index = 0
 			inc=0;
 			metadata={}
@@ -81,26 +81,29 @@ for file in files:
 
 			durations=metadata['duration'].split(":")
 			totallength = int((int(durations[0])*3600)+(int(durations[1])*60)+float(durations[2]))
-			print "Total video length is: "+str(totallength)+"s"
+#			print "Total video length is: "+str(totallength)+"s"
 			
 			if not os.path.exists(posterfiledir+file+'_0.jpg'):
-				print "Generating Posterfiles:"
+#				print "File is a video. Copying to "+tempdir+file
+				shutil.copy2(directory+file,tempdir+file)
+
+#				print "Generating Posterfiles:"
 				interval = float(totallength) / (number_of_posterfiles+1);
-				print "Interval is: "+str(interval)
+#				print "Interval is: "+str(interval)
 				intervals = []
 				for x in range(number_of_posterfiles):
 					intervals.append(interval*(x+1))
 				for idx,val in enumerate(intervals):
-					print "Posterfile "+str(idx)+" value "+str(val)
+#					print "Posterfile "+str(idx)+" value "+str(val)
 					posterfile = posterfiledir+file+"_"+str(idx)+".jpg"
 					thumbnail_posterfile = posterfiledir+file+"_"+str(idx)+".th.jpg"
-					print "Generating "+posterfile
+#					print "Generating "+posterfile
 					cmd = ["ffmpeg","-i",tempdir+file,"-an","-ss",str(val),"-f","mjpeg","-qmin","0.8","-qmax","0.8","-t","1","-r","1","-y",posterfile]
 					outputs = subprocess.Popen(cmd,stderr=subprocess.PIPE).communicate()[1]
-					print outputs
+#					print outputs
 					th_cmd = ["convert",posterfile,"-resize",thumbnail_dimension+"^","-gravity","center","-extent",thumbnail_dimension,"-quality",str(thumbnail_quality),thumbnail_posterfile]
 					th_outputs = subprocess.Popen(th_cmd,stderr=subprocess.PIPE).communicate()[1]
-					print th_outputs
+#					print th_outputs
 			os.remove(tempdir+file)
 f = open(metafile,'w')
 json.dump(meta,f)
