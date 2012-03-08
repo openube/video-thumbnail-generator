@@ -6,23 +6,30 @@ import datetime
 import simplejson as json
 import subprocess
 import os
+from progress_bar import ProgressBar
+
 
 number_of_posterfiles=8
 thumbnail_dimension='160x90'
 thumbnail_quality=75
 directory='/mnt/s3fs/'
-directory='/tmp/test/'
+#directory='/tmp/test/'
 posterfiledir='/mnt/s3fs/posterfiles/'
-posterfiledir='/tmp/test/posterfiles/'
+#posterfiledir='/tmp/test/posterfiles/'
 
 metafile = posterfiledir+'meta.js'
 tempdir = '/tmp/'
 files=os.listdir(directory)
 
 meta = {}
-for file in files:
 
+total_files = len(files)
+current=0;
+
+for file in files:
+	current+=1	
 	print "On S3: "+file
+	print "PROGRESS: "+str(float(1.0*current/total_files)*100)+"%"
 	filename,extension = splitext(file)
 	if extension in ['.mp4','.m4v','.mov','.mkv']:
 		if not os.path.exists(posterfiledir+file+'_0.jpg') or not os.path.exists(metafile):
@@ -46,7 +53,7 @@ for file in files:
 			val=''
 			seen_v_stream=0
 			seen_a_stream=0
-			metadata['since']=datetime.datetime.fromtimestamp(os.path.getmtime(directory+file)).isoformat()
+			metadata['since']=datetime.datetime.fromtimestamp(int(os.path.getmtime(directory+file))).isoformat()
 			for ii in range(len(metadata_parts)):
 				val = metadata_parts[ii].strip()
 				if val == 'Duration':
