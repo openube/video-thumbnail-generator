@@ -56,6 +56,10 @@ for file in files:
 			metadata['since']=datetime.datetime.fromtimestamp(int(os.path.getmtime(directory+file))).isoformat()
 			for ii in range(len(metadata_parts)):
 				val = metadata_parts[ii].strip()
+				if val == 'encoder':
+					metadata['encoder'] = metadata_parts[ii+1].strip()
+				if val == 'WM/ToolName':
+					metadata['encoder'] = metadata_parts[ii+1].strip()
 				if val == 'Duration':
 					metadata['duration'] = metadata_parts[ii+1].strip()
 				if val == 'bitrate':
@@ -104,7 +108,7 @@ for file in files:
 					th_cmd = ["convert",posterfile,"-resize",thumbnail_dimension+"^","-gravity","center","-extent",thumbnail_dimension,"-quality",str(thumbnail_quality),thumbnail_posterfile]
 					th_outputs = subprocess.Popen(th_cmd,stderr=subprocess.PIPE).communicate()[1]
 #					print th_outputs
-			os.remove(tempdir+file)
+				os.remove(tempdir+file)
 f = open(metafile,'w')
 json.dump(meta,f)
 f.close()
