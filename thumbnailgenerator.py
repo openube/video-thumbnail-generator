@@ -33,7 +33,7 @@ for file in files:
 	sys.stdout.write(str(p)+'\r')
 	sys.stdout.flush()
 	filename,extension = splitext(file)
-	if extension in ['.mp4','.m4v','.mov','.mkv']:
+	if extension in ['.mp4','.m4v','.mov','.mkv','.wmv']:
 		if not os.path.exists(posterfiledir+file+'_0.jpg') or not os.path.exists(metafile):
 			if os.path.exists(metafile):
 				f = open(metafile,'r')
