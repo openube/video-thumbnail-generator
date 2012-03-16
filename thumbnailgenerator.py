@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import stat
 import re
 import signal
 import shutil
@@ -22,6 +23,7 @@ directory='/mnt/s3fs/'
 #directory='/tmp/test/'
 posterfiledir='/mnt/s3fs/posterfiles/'
 #posterfiledir='/tmp/test/posterfiles/'
+pidfile = "/tmp/thumbnailgenerator.pid"
 
 metafile = posterfiledir+'meta.js'
 tempdir = '/tmp/'
@@ -30,6 +32,12 @@ files=os.listdir(directory)
 meta = {}
 def signal_handler(signal, frame):
 	print 'SIGINT caught, exiting'
+
+	commit_metadata()
+
+	#Clean up PID file
+	os.unlink(pidfile)
+	
 	sys.exit(0)
 
 def main():
@@ -40,7 +48,6 @@ def main():
 
 	#Setup PID file to see if we're already running
 	pid = str(os.getpid())
-	pidfile = "/tmp/thumbnailgenerator.pid"
 	if os.path.isfile(pidfile):
 		print "%s already exists, exiting" % pidfile
 		sys.exit()
@@ -64,13 +71,7 @@ def main():
 	channel.basic_consume(process_msg,queue='thumbnailgenerator',no_ack=True)
 	debug("Listening for messages")
 	channel.start_consuming()
-	#print "Processing all files"
-	#process_all_files()
 
-	commit_metadata()
-
-	#Clean up PID file
-	os.unlink(pidfile)
 
 def process_msg(ch,method,properties,body):
 	debug("Received msg: "+body)
@@ -121,13 +122,17 @@ def process_all_files():
 
 def generate_posterfiles(filename):
 	"""Expects short filename"""
-	debug("Generating posterfiles for" + filename)
+	debug("Generating " + str(number_of_posterfiles) + " posterfiles for" + filename)
 	#Figure out the intervals at which we need to take posterfiles
 	durations=meta[filename]['duration'].split(":")
 	totallength = int((int(durations[0])*3600)+(int(durations[1])*60)+float(durations[2]))
-
+	debug("Copying file to tmp")
 	#Dump the video in a tempdirectory to reduce latency
 	shutil.copy2(directory+filename,tempdir+filename)
+	
+	#Set the permissions through chmod
+	os.chmod(tempdir+filename,stat.S_IRUSR)
+
 
 	interval = float(totallength) / (number_of_posterfiles+1);
 	intervals = []
@@ -136,6 +141,7 @@ def generate_posterfiles(filename):
 	for idx,val in enumerate(intervals):
 		posterfile = posterfiledir + filename + "_"+str(idx)+".jpg"
 		thumbnail_posterfile = posterfiledir + filename + "_" + str(idx) + ".th.jpg"
+		debug("Generating "+posterfile)
 		cmd = ["ffmpeg","-i",tempdir+filename,"-an","-ss",str(val),"-f","mjpeg","-qmin","0.8","-qmax","0.8","-t","1","-r","1","-y",posterfile]
 		outputs = subprocess.Popen(cmd,stderr=subprocess.PIPE).communicate()[1]
 		th_cmd = ["convert",posterfile,"-resize",thumbnail_dimension+"^","-gravity","center","-extent",thumbnail_dimension,"-quality",str(thumbnail_quality),thumbnail_posterfile]
