@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import re
+import signal
 import shutil
 import math
 from os.path import splitext
@@ -10,8 +11,10 @@ import subprocess
 import os
 from progress_bar import ProgressBar
 import sys
+import pika
+import argparse
 
-
+debug_mode=True
 number_of_posterfiles=8
 thumbnail_dimension='160x90'
 thumbnail_quality=75
@@ -25,9 +28,16 @@ tempdir = '/tmp/'
 files=os.listdir(directory)
 
 meta = {}
+def signal_handler(signal, frame):
+	print 'SIGINT caught, exiting'
+	sys.exit(0)
 
 def main():
 	print "Starting up"
+
+	#Exit on SIGINT
+	signal.signal(signal.SIGINT, signal_handler)
+
 	#Setup PID file to see if we're already running
 	pid = str(os.getpid())
 	pidfile = "/tmp/thumbnailgenerator.pid"
@@ -37,22 +47,48 @@ def main():
 	else:
 		file(pidfile, 'w').write(pid)
 
+	debug("Opening rMQ connection")
+	connection = pika.BlockingConnection(pika.ConnectionParameters(
+	               'localhost'))
+	channel = connection.channel()
+	channel.queue_declare(queue='thumbnailgenerator')
+	
+
 	#Load whatever metadata already exists
 	if os.path.exists(metafile):
 		f = open(metafile,'r')
 		meta = json.load(f)
 		f.close()
 
-	print "Processing all files"
-	process_all_files()
+	#Start listening for messages:
+	channel.basic_consume(process_msg,queue='thumbnailgenerator',no_ack=True)
+	debug("Listening for messages")
+	channel.start_consuming()
+	#print "Processing all files"
+	#process_all_files()
 
+	commit_metadata()
+
+	#Clean up PID file
+	os.unlink(pidfile)
+
+def process_msg(ch,method,properties,body):
+	debug("Received msg: "+body)
+	filename = directory + body
+	if (os.path.exists(filename)):
+		meta[body] = get_metadata(body)
+		generate_posterfiles(body)
+		commit_metadata()
+	else:
+		debug(body + " doesn't seem to exist")
+	debug("Idle")
+
+def commit_metadata():
+	debug("Writing metadata to disk")
 	#Commit the metadata back to disk
 	f = open(metafile,'w')
 	json.dump(meta,f)
 	f.close()
-
-	#Clean up PID file
-	os.unlink(pidfile)
 
 def process_all_files():
 	total_files = len(files)
@@ -63,40 +99,53 @@ def process_all_files():
 		#Update the progress bar
 		current+=1	
 		p.update_time(current)
-		sys.stdout.write(str(p)+'\r')
-		sys.stdout.flush()
+		if not debug_mode:
+			sys.stdout.write(str(p)+'\r')
+			sys.stdout.flush()
 
 		#Extract the filename and extension
 		filename,extension = splitext(file)
 
 		#Are we a video file?
 		if extension in ['.mp4','.m4v','.mov','.mkv','.wmv']:
+			if debug_mode:
+				debug("Processing "+file)
 			if not file in meta:
+				debug("File metadata non-existent. Extracting")
 				#Extract Metadata from the file
 				meta[file]=get_metadata(directory+file)
 			if not os.path.exists(posterfiledir+file+'_0.jpg'):
-				
-				#Figure out the intervals at which we need to take posterfiles
-				durations=meta[file]['duration'].split(":")
-				totallength = int((int(durations[0])*3600)+(int(durations[1])*60)+float(durations[2]))
+				generate_posterfiles(file)
+			debug("Done")
+			commit_metadata()
 
-				#Dump the video in a tempdirectory to reduce latency
-				shutil.copy2(directory+file,tempdir+file)
+def generate_posterfiles(filename):
+	"""Expects short filename"""
+	debug("Generating posterfiles for" + filename)
+	#Figure out the intervals at which we need to take posterfiles
+	durations=meta[filename]['duration'].split(":")
+	totallength = int((int(durations[0])*3600)+(int(durations[1])*60)+float(durations[2]))
 
-				interval = float(totallength) / (number_of_posterfiles+1);
-				intervals = []
-				for x in range(number_of_posterfiles):
-					intervals.append(interval*(x+1))
-				for idx,val in enumerate(intervals):
-					posterfile = posterfiledir+file+"_"+str(idx)+".jpg"
-					thumbnail_posterfile = posterfiledir+file+"_"+str(idx)+".th.jpg"
-					cmd = ["ffmpeg","-i",tempdir+file,"-an","-ss",str(val),"-f","mjpeg","-qmin","0.8","-qmax","0.8","-t","1","-r","1","-y",posterfile]
-					outputs = subprocess.Popen(cmd,stderr=subprocess.PIPE).communicate()[1]
-					th_cmd = ["convert",posterfile,"-resize",thumbnail_dimension+"^","-gravity","center","-extent",thumbnail_dimension,"-quality",str(thumbnail_quality),thumbnail_posterfile]
-					th_outputs = subprocess.Popen(th_cmd,stderr=subprocess.PIPE).communicate()[1]
-				os.remove(tempdir+file)
+	#Dump the video in a tempdirectory to reduce latency
+	shutil.copy2(directory+filename,tempdir+filename)
 
-def get_metadata(filename):
+	interval = float(totallength) / (number_of_posterfiles+1);
+	intervals = []
+	for x in range(number_of_posterfiles):
+		intervals.append(interval*(x+1))
+	for idx,val in enumerate(intervals):
+		posterfile = posterfiledir + filename + "_"+str(idx)+".jpg"
+		thumbnail_posterfile = posterfiledir + filename + "_" + str(idx) + ".th.jpg"
+		cmd = ["ffmpeg","-i",tempdir+filename,"-an","-ss",str(val),"-f","mjpeg","-qmin","0.8","-qmax","0.8","-t","1","-r","1","-y",posterfile]
+		outputs = subprocess.Popen(cmd,stderr=subprocess.PIPE).communicate()[1]
+		th_cmd = ["convert",posterfile,"-resize",thumbnail_dimension+"^","-gravity","center","-extent",thumbnail_dimension,"-quality",str(thumbnail_quality),thumbnail_posterfile]
+		th_outputs = subprocess.Popen(th_cmd,stderr=subprocess.PIPE).communicate()[1]
+	os.remove(tempdir+filename)
+
+def get_metadata(short_filename):
+	"""Expects short filename"""
+	filename = directory + short_filename
+	debug("Extracting metadata from " +short_filename)
 	#Grab file info from ffmpeg
 	metadata_str = subprocess.Popen(['ffmpeg','-i',filename],stderr=subprocess.PIPE).communicate()[1]
 	metadata_parts = re.findall(r'[^,\|\n]+',metadata_str.replace(': ','|'))
@@ -131,7 +180,11 @@ def get_metadata(filename):
 				metadata['v_dimension']=metadata_parts[ii+4].strip()
 				metadata['v_bitrate']=metadata_parts[ii+5].strip()
 				metadata['v_fps']=metadata_parts[ii+6].strip()
-return metadata
+	return metadata
+
+def debug(msg):
+	if debug_mode:
+		print msg
 
 #Kick into the main proc
 main()
