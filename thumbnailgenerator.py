@@ -55,8 +55,7 @@ def main():
 		file(pidfile, 'w').write(pid)
 
 	debug("Opening rMQ connection")
-	connection = pika.BlockingConnection(pika.ConnectionParameters(
-	               'localhost'))
+	connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
 	channel = connection.channel()
 	channel.queue_declare(queue='thumbnailgenerator')
 	
