@@ -15,6 +15,7 @@ import sys
 import pika
 import argparse
 
+sigint_caught=False
 debug_mode=True
 number_of_posterfiles=8
 thumbnail_dimension='160x90'
@@ -30,15 +31,20 @@ tempdir = '/tmp/'
 files=os.listdir(directory)
 
 meta = {}
+
 def signal_handler(signal, frame):
-	print 'SIGINT caught, exiting'
+	global sigint_caught
+	if sigint_caught:
+		print 'SIGINT caught, exiting'
+		commit_metadata()
 
-	commit_metadata()
-
-	#Clean up PID file
-	os.unlink(pidfile)
+		#Clean up PID file
+		os.unlink(pidfile)
 	
-	sys.exit(0)
+		sys.exit(0)
+	else:
+		print 'SIGINT caught, quitting after next job'
+		sigint_caught=True
 
 def main():
 	print "Starting up"
@@ -81,6 +87,8 @@ def process_msg(ch,method,properties,body):
 		commit_metadata()
 	else:
 		debug(body + " doesn't seem to exist")
+	if sigint_caught:
+		sys.exit(0)
 	debug("Idle")
 
 def commit_metadata():
@@ -89,35 +97,6 @@ def commit_metadata():
 	f = open(metafile,'w')
 	json.dump(meta,f)
 	f.close()
-
-def process_all_files():
-	total_files = len(files)
-	current=0;
-	p = ProgressBar(total_files)
-	#Loop through all files in the directory
-	for file in files:
-		#Update the progress bar
-		current+=1	
-		p.update_time(current)
-		if not debug_mode:
-			sys.stdout.write(str(p)+'\r')
-			sys.stdout.flush()
-
-		#Extract the filename and extension
-		filename,extension = splitext(file)
-
-		#Are we a video file?
-		if extension in ['.mp4','.m4v','.mov','.mkv','.wmv']:
-			if debug_mode:
-				debug("Processing "+file)
-			if not file in meta:
-				debug("File metadata non-existent. Extracting")
-				#Extract Metadata from the file
-				meta[file]=get_metadata(directory+file)
-			if not os.path.exists(posterfiledir+file+'_0.jpg'):
-				generate_posterfiles(file)
-			debug("Done")
-			commit_metadata()
 
 def generate_posterfiles(filename):
 	"""Expects short filename"""
