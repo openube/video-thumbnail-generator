@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import ftputil
 import stat
 import re
 import signal
@@ -25,6 +26,10 @@ directory='/mnt/s3fs/'
 posterfiledir='/mnt/s3fs/posterfiles/'
 #posterfiledir='/tmp/test/posterfiles/'
 pidfile = "/tmp/thumbnailgenerator.pid"
+
+ftp_host = 'ftp.streaming.thomsonreuters2.netdna-cdn.com'
+ftp_username = 'streaming.thomsonreuters2'
+ftp_password = 'Gadget55'
 
 metafile = posterfiledir+'meta.js'
 tempdir = '/tmp/'
@@ -82,13 +87,35 @@ def main():
 def process_msg(ch,method,properties,body):
 	global meta
 	debug("Received msg: "+body)
-	filename = directory + body
-	if (os.path.exists(filename)):
-		meta[body] = get_metadata(body)
-		generate_posterfiles(body)
-		commit_metadata()
-	else:
-		debug(body + " doesn't seem to exist")
+	try:
+		decoded_msg = json.loads(body)
+
+		if 'command' in decoded_msg:
+			if decoded_msg['command'] == 'add':
+				filename = decoded_msg['filename']
+				if (os.path.exists(directory+filename)):
+					meta[filename] = get_metadata(filename)
+					generate_posterfiles(filename)
+					upload_to_ftp(filename)
+					commit_metadata()
+				else:
+					debug(filename + " doesn't seem to exist")
+			elif decoded_msg['command'] == 'removemetadata':
+				debug("Purging extraneous metadata")		
+				for metafile in meta:
+					if not os.path.exists(directory+metafile):
+						meta.pop(metafile)
+				commit_metadata()
+			elif decoded_msg['command'] == 'purgeftp':
+				debug("Purging extraneous FTP Files ")
+				##TODO: implement this
+				pass
+			else:
+				debug("Message not understood")
+		else:
+			debug("Message not understood")
+	except json.decoder.JSONDecodeError:
+		debug("Message not understood. Exception raised decoding.")
 	if sigint_caught:
 		commit_metadata()
 		#Clean up PID file
@@ -106,7 +133,7 @@ def commit_metadata():
 def generate_posterfiles(filename):
 	global meta
 	"""Expects short filename"""
-	debug("Generating " + str(number_of_posterfiles) + " posterfiles for" + filename)
+	debug("Generating " + str(number_of_posterfiles) + " posterfiles for " + filename)
 	#Figure out the intervals at which we need to take posterfiles
 	durations=meta[filename]['duration'].split(":")
 	totallength = int((int(durations[0])*3600)+(int(durations[1])*60)+float(durations[2]))
@@ -132,6 +159,24 @@ def generate_posterfiles(filename):
 		th_outputs = subprocess.Popen(th_cmd,stderr=subprocess.PIPE).communicate()[1]
 	os.remove(tempdir+filename)
 
+def upload_to_ftp(short_filename):
+	"""Expects short filename"""
+	debug("Uploading to FTP")
+
+	host = ftputil.FTPHost(ftp_host,ftp_username,ftp_password)
+	host.upload(directory+short_filename,short_filename,mode='b',callback=_reporthook)
+	host.close()
+
+def _reporthook(numblocks, blocksize, filesize, url=None):
+	base = os.path.basename(url)
+	try:
+		percent = min((numblocks*blocksize*100)/filesize, 100)
+	except:
+		percent = 100
+		if numblocks != 0:
+			print str(percent)+'%'
+
+
 def get_metadata(short_filename):
 	global meta
 	"""Expects short filename"""
@@ -141,7 +186,7 @@ def get_metadata(short_filename):
 	metadata_str = subprocess.Popen(['ffmpeg','-i',filename],stderr=subprocess.PIPE).communicate()[1]
 	metadata_parts = re.findall(r'[^,\|\n]+',metadata_str.replace(': ','|'))
 	metadata_start_index = 0
-	inc=0;
+	inc=0
 	metadata={}
 	val=''
 	seen_v_stream=0
