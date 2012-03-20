@@ -159,22 +159,26 @@ def generate_posterfiles(filename):
 		th_outputs = subprocess.Popen(th_cmd,stderr=subprocess.PIPE).communicate()[1]
 	os.remove(tempdir+filename)
 
+ftp_upload_filesize=0
+ftp_upload_progress=0
+
 def upload_to_ftp(short_filename):
 	"""Expects short filename"""
+	global ftp_upload_progress
+	global ftp_upload_filesize
 	debug("Uploading to FTP")
-
+	ftp_upload_filesize=os.path.getsize(directory+short_filename)
+	ftp_upload_progress=0
 	host = ftputil.FTPHost(ftp_host,ftp_username,ftp_password)
-	host.upload(directory+short_filename,short_filename,mode='b',callback=_reporthook)
+	host.upload(directory+short_filename,short_filename,mode='b',callback=ftpcallback)
 	host.close()
 
-def _reporthook(numblocks, blocksize, filesize, url=None):
-	base = os.path.basename(url)
-	try:
-		percent = min((numblocks*blocksize*100)/filesize, 100)
-	except:
-		percent = 100
-		if numblocks != 0:
-			print str(percent)+'%'
+def ftpcallback(chunk):
+	global ftp_upload_progress
+	global ftp_upload_filesize
+	ftp_upload_progress = ftp_upload_progress+len(chunk)
+	percentage = (float(ftp_upload_progress) / float(ftp_upload_filesize))*100
+	print("%.2f" %round(percentage,2))+'%'
 
 
 def get_metadata(short_filename):
