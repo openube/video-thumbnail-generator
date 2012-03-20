@@ -47,6 +47,7 @@ def signal_handler(signal, frame):
 		sigint_caught=True
 
 def main():
+	global meta
 	print "Starting up"
 
 	#Exit on SIGINT
@@ -79,6 +80,7 @@ def main():
 
 
 def process_msg(ch,method,properties,body):
+	global meta
 	debug("Received msg: "+body)
 	filename = directory + body
 	if (os.path.exists(filename)):
@@ -88,6 +90,9 @@ def process_msg(ch,method,properties,body):
 	else:
 		debug(body + " doesn't seem to exist")
 	if sigint_caught:
+		commit_metadata()
+		#Clean up PID file
+		os.unlink(pidfile)
 		sys.exit(0)
 	debug("Idle")
 
@@ -99,6 +104,7 @@ def commit_metadata():
 	f.close()
 
 def generate_posterfiles(filename):
+	global meta
 	"""Expects short filename"""
 	debug("Generating " + str(number_of_posterfiles) + " posterfiles for" + filename)
 	#Figure out the intervals at which we need to take posterfiles
@@ -127,6 +133,7 @@ def generate_posterfiles(filename):
 	os.remove(tempdir+filename)
 
 def get_metadata(short_filename):
+	global meta
 	"""Expects short filename"""
 	filename = directory + short_filename
 	debug("Extracting metadata from " +short_filename)
