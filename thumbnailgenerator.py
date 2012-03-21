@@ -115,8 +115,15 @@ def process_msg(ch,method,properties,body):
 				commit_metadata()
 			elif decoded_msg['command'] == 'purgeftp':
 				debug("Purging extraneous FTP Files ")
-
-				pass
+				bucket_key_list = []
+				for key in bucket.list():
+					bucket_key_list.append(key.name)
+				host = ftputil.FTPHost(ftp_host,ftp_username,ftp_password)
+				ftplist = host.listdir(host.curdir)
+				for ftpfile in ftplist:
+					if not ftpfile in bucket_key_list:
+						debug("Deleting "+ftpfile+" from FTP")
+						host.host.remove(ftpfile)
 			else:
 				debug("Message not understood")
 		else:
