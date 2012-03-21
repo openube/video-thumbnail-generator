@@ -123,7 +123,7 @@ def process_msg(ch,method,properties,body):
 				for ftpfile in ftplist:
 					if not ftpfile in bucket_key_list:
 						debug("Deleting "+ftpfile+" from FTP")
-						host.host.remove(ftpfile)
+						host.remove(ftpfile)
 			else:
 				debug("Message not understood")
 		else:
