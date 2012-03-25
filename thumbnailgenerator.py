@@ -3,6 +3,7 @@
 import ftputil
 import stat
 import re
+from os.path import splitext
 import signal
 import datetime
 import simplejson as json
@@ -123,7 +124,23 @@ def process_msg(ch,method,properties,body):
 				for ftpfile in ftplist:
 					if not ftpfile in bucket_key_list:
 						debug("Deleting "+ftpfile+" from FTP")
-						host.remove(ftpfile)
+						try:
+							host.remove(ftpfile)
+						except ftputil.ftp_error.PermanentError:
+							pass
+			elif decoded_msg['command'] == 'updateftp':
+				debug("Uploading missing videos to FTP")
+				bucket_key_list = []
+				for key in bucket.list():
+					bucket_key_list.append(key.name)
+				host = ftputil.FTPHost(ftp_host,ftp_username,ftp_password)
+				ftplist = host.listdir(host.curdir)
+				for key in bucket_key_list:
+					firstpart,extension = splitext(key)
+					#Are we a video file?
+					if extension in ['.mp4','.m4v','.mov','.mkv','.wmv','.avi'] and not "/" in key and key not in ftplist:
+						upload_to_ftp(key)
+
 			else:
 				debug("Message not understood")
 		else:
@@ -183,8 +200,12 @@ def generate_posterfiles(filename):
 		th_cmd = ["convert",tempdir+posterfile,"-resize",thumbnail_dimension+"^","-gravity","center","-extent",thumbnail_dimension,"-quality",str(thumbnail_quality),tempdir+thumbnail_posterfile]
 		th_out = subprocess.Popen(th_cmd,stderr=subprocess.PIPE).communicate()[1]
 		debug("Uploading "+posterfile)
+#		while True:
+#			try:
 		bucket.new_key('posterfiles/'+posterfile).set_contents_from_filename(tempdir+posterfile)
 		bucket.new_key('posterfiles/'+thumbnail_posterfile).set_contents_from_filename(tempdir+thumbnail_posterfile)
+#			except socket.error: continue
+#			break
 	os.remove(tempdir+filename)
 
 ftp_upload_filesize=0
@@ -194,6 +215,7 @@ def upload_to_ftp(short_filename):
 	"""Expects short filename"""
 	global ftp_upload_progress
 	global ftp_upload_filesize
+	debug("Uploading "+short_filename+" to FTP")
 	debug("Caching file from S3")
 	filekey = bucket.get_key(short_filename)
 	ftp_upload_filesize = filekey.size
@@ -215,6 +237,7 @@ def ftpcallback(chunk):
 def get_metadata(short_filename):
 	global meta
 	"""Expects short filename"""
+	debug("Downloading  " +short_filename+" to temp directory")
 	filekey = bucket.get_key(short_filename)
 	filename = tempdir+short_filename
 	filekey.get_contents_to_filename(filename)
