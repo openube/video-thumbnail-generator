@@ -13,7 +13,7 @@ import os
 import sys
 import pika
 import boto
-from loggly import logglyHandler
+from loggly import logglyHandler,JsonFormatter
 
 sigint_caught=False
 number_of_posterfiles=10
@@ -41,7 +41,7 @@ except ImportError:
 def signal_handler(signal, frame):
 	global sigint_caught
 	if sigint_caught:
-		log.warn('SIGINT caught, exiting')
+		logging.warn('SIGINT caught, exiting')
 		commit_metadata()
 
 		#Clean up PID file
@@ -49,7 +49,7 @@ def signal_handler(signal, frame):
 	
 		sys.exit(0)
 	else:
-		log.warn('SIGINT caught, quitting after next job')
+		logging.warn('SIGINT caught, quitting after next job')
 		sigint_caught=True
 
 def main():
@@ -67,7 +67,7 @@ def main():
 
 	http_handler = logglyHandler(logglyurl)
 	http_handler.setLevel(logging.INFO)
-	loggly_formatter = logging.Formatter('%(asctime)s severity=%(levelname)s,%(message)s')
+	loggly_formatter = JsonFormatter('%(levelname)s %(pathname)s %(module)s %(funcName)s %(asctime)s %(message)s')
 	http_handler.setFormatter(loggly_formatter)
 	logging.getLogger('').addHandler(http_handler)
 
@@ -81,7 +81,7 @@ def main():
 	#Setup PID file to see if we're already running
 	pid = str(os.getpid())
 	if os.path.isfile(pidfile):
-		logging.error("%s already exists, exiting", pidfile)
+		logging.error("%s already exists, exiting"% pidfile)
 		sys.exit()
 	else:
 		file(pidfile, 'w').write(pid)
