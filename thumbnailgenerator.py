@@ -103,7 +103,7 @@ def main():
 
 def process_msg(ch,method,properties,body):
 	global meta
-	logging.info("Received msg: "+body)
+	logging.info("Received msg: %s"%body)
 	try:
 		decoded_msg = json.loads(body)
 
@@ -123,11 +123,11 @@ def process_msg(ch,method,properties,body):
 				bucket_key_list = []
 				for key in bucket.list():
 					bucket_key_list.append(key.name)
-				logging.debug("Got all keys. Size = %s",len(bucket_key_list))
+				logging.debug("Got all keys. Size = %s"%len(bucket_key_list))
 				for metafile in meta:
-					logging.debug("seeing if %s is absent",metafile)
+					logging.debug("seeing if %s is absent"%metafile)
 					if not metafile in bucket_key_list:
-						logging.info("File absent. Purging metadata for %s",metafile)
+						logging.info("File absent. Purging metadata for %s"%metafile)
 						meta_to_purge.append(metafile)
 				for metafile in meta_to_purge:
 					meta.pop(metafile)
@@ -141,7 +141,7 @@ def process_msg(ch,method,properties,body):
 				ftplist = host.listdir(host.curdir)
 				for ftpfile in ftplist:
 					if not ftpfile in bucket_key_list:
-						logging.info("Deleting %s from FTP",ftpfile)
+						logging.info("Deleting %s from FTP"%ftpfile)
 						try:
 							host.remove(ftpfile)
 						except ftputil.ftp_error.PermanentError:
@@ -192,7 +192,7 @@ def load_metadata():
 def generate_posterfiles(filename):
 	global meta
 	"""Expects short filename"""
-	logging.info("Generating %s posterfiles for %s",number_of_posterfiles, filename)
+	logging.info("Generating %s posterfiles for %s"%(number_of_posterfiles, filename))
 	#Figure out the intervals at which we need to take posterfiles
 	durations=meta[filename]['duration'].split(":")
 	totallength = int((int(durations[0])*3600)+(int(durations[1])*60)+float(durations[2]))
@@ -213,7 +213,7 @@ def generate_posterfiles(filename):
 		val = int(val)
 		posterfile = filename + "_"+str(idx)+".jpg"
 		thumbnail_posterfile = filename + "_" + str(idx) + ".th.jpg"
-		logging.info("Generating %s@%s",posterfile,val)
+		logging.info("Generating %s@%s"%(posterfile,val))
 		output_success=False
 		#Try and generate a posterfile at the given time. If failure, add a second until wins.
 		while not output_success:
@@ -223,17 +223,17 @@ def generate_posterfiles(filename):
 			if os.path.getsize(tempdir+posterfile) and attempts < 30 == 0:
 				val=val+1
 				attempts=attempts+1
-				logging.warn("Posterfile was zero sized. Increasing time to %s",val)
+				logging.warn("Posterfile was zero sized. Increasing time to %s"%val)
 			elif attempts < 30:
 				output_success=True
 			else: 
-				logging.error("Failed to generate %s",posterfile)
+				logging.error("Failed to generate %s"%posterfile)
 		if output_success:
-			logging.info("Generating %s",thumbnail_posterfile)
+			logging.info("Generating %s"%thumbnail_posterfile)
 			#Use Imagemagick to convert posterfile to thumbnail
 			th_cmd = ["convert",tempdir+posterfile,"-resize",thumbnail_dimension+"^","-gravity","center","-extent",thumbnail_dimension,"-quality",str(thumbnail_quality),tempdir+thumbnail_posterfile]
 			th_out = subprocess.Popen(th_cmd,stderr=subprocess.PIPE).communicate()[1]
-			logging.info("Uploading %s",posterfile)
+			logging.info("Uploading %s"%posterfile)
 			bucket.new_key('posterfiles/'+posterfile).set_contents_from_filename(tempdir+posterfile)
 			bucket.new_key('posterfiles/'+thumbnail_posterfile).set_contents_from_filename(tempdir+thumbnail_posterfile)
 	os.remove(tempdir+filename)
@@ -245,8 +245,8 @@ def upload_to_ftp(short_filename,overwrite=False):
 	"""Expects short filename"""
 	global ftp_upload_progress
 	global ftp_upload_filesize
-	logging.info("Uploading %s to FTP",short_filename)
-	logging.debug("Overwrite forced: %s",overwrite)
+	logging.info("Uploading %s to FTP"%short_filename)
+	logging.debug("Overwrite forced: %s"%overwrite)
 	logging.debug("Caching file from S3")
 	filekey = bucket.get_key(short_filename)
 	ftp_upload_filesize = filekey.size
@@ -259,7 +259,7 @@ def upload_to_ftp(short_filename,overwrite=False):
 	if not overwrite and host.path.exists(short_filename):
 		size_on_disk = os.lstat(tempdir+short_filename).st_size
 		size_on_server = host.lstat(short_filename).st_size
-		logging.info("Size on disk: %s Size on server: %s",size_on_disk,size_on_server)
+		logging.info("Size on disk: %s Size on server: %s"%(size_on_disk,size_on_server))
 		if size_on_disk != size_on_server:
 			logging.info("Different. Re-uploading")
 			host.upload(tempdir+short_filename,short_filename,mode='b',callback=ftpcallback)
@@ -279,11 +279,11 @@ def ftpcallback(chunk):
 def get_metadata(short_filename):
 	global meta
 	"""Expects short filename"""
-	logging.debug("Downloading %s to temp directory",short_filename)
+	logging.debug("Downloading %s to temp directory"%short_filename)
 	filekey = bucket.get_key(short_filename)
 	filename = tempdir+short_filename
 	filekey.get_contents_to_filename(filename)
-	logging.info("Extracting metadata from %s",short_filename)
+	logging.info("Extracting metadata from %s"%short_filename)
 	#Grab file info from ffmpeg
 	metadata_str = subprocess.Popen(['ffmpeg','-i',filename],stderr=subprocess.PIPE).communicate()[1]
 	metadata_parts = re.findall(r'[^,\|\n]+',metadata_str.replace(': ','|'))
