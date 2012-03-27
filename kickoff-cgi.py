@@ -42,7 +42,7 @@ else:
 			if extension in ['.mp4','.m4v','.mov','.mkv','.wmv']:
 				if allfiles or (not allfiles and not os.path.exists(directory+'posterfiles/'+filename+'_0.jpg')):
 					msg = {}
-					msg.command = 'add'
-					msg.filename = filename
+					msg['command'] = 'add'
+					msg['filename'] = filename
 					channel.basic_publish(exchange='',routing_key='thumbnailgenerator',body=json.dumps(msg))
 			print "]"
