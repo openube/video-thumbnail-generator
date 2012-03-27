@@ -15,7 +15,7 @@ import boto
 
 sigint_caught=False
 debug_mode=True
-number_of_posterfiles=8
+number_of_posterfiles=10
 thumbnail_dimension='160x90'
 thumbnail_quality=75
 pidfile = "/tmp/thumbnailgenerator.pid"
@@ -191,31 +191,39 @@ def generate_posterfiles(filename):
 	for x in range(number_of_posterfiles):
 		intervals.append(interval*(x+1))
 	for idx,val in enumerate(intervals):
+		#Make interval an int
+		val = int(val)
 		posterfile = filename + "_"+str(idx)+".jpg"
 		thumbnail_posterfile = filename + "_" + str(idx) + ".th.jpg"
-		debug("Generating "+posterfile)
-		cmd = ["ffmpeg","-i",tempdir+filename,"-an","-ss",str(val),"-f","mjpeg","-qmin","0.8","-qmax","0.8","-t","1","-r","1","-y",tempdir+posterfile]
-		subprocess.Popen(cmd,stderr=subprocess.PIPE).communicate()[1]
+		debug("Generating "+posterfile +"@"+str(val))
+		output_success=False
+		#Try and generate a posterfile at the given time. If failure, add a second until wins.
+		while not output_success:
+			cmd = ["ffmpeg","-ss",str(val),"-i",tempdir+filename,"-an","-f","mjpeg","-qmin","0.8","-qmax","0.8","-t","1","-r","1","-y",tempdir+posterfile]
+			subprocess.Popen(cmd,stderr=subprocess.PIPE).communicate()[1]
+			if os.path.getsize(tempdir+posterfile) == 0:
+				val=val+1
+				debug("Posterfile was zero sized. Increasing time to "+str(val))
+			else:
+				output_success=True
 		debug("Generating "+thumbnail_posterfile)
+		#Use Imagemagick to convert posterfile to thumbnail
 		th_cmd = ["convert",tempdir+posterfile,"-resize",thumbnail_dimension+"^","-gravity","center","-extent",thumbnail_dimension,"-quality",str(thumbnail_quality),tempdir+thumbnail_posterfile]
 		th_out = subprocess.Popen(th_cmd,stderr=subprocess.PIPE).communicate()[1]
 		debug("Uploading "+posterfile)
-#		while True:
-#			try:
 		bucket.new_key('posterfiles/'+posterfile).set_contents_from_filename(tempdir+posterfile)
 		bucket.new_key('posterfiles/'+thumbnail_posterfile).set_contents_from_filename(tempdir+thumbnail_posterfile)
-#			except socket.error: continue
-#			break
 	os.remove(tempdir+filename)
 
 ftp_upload_filesize=0
 ftp_upload_progress=0
 
-def upload_to_ftp(short_filename):
+def upload_to_ftp(short_filename,overwrite=False):
 	"""Expects short filename"""
 	global ftp_upload_progress
 	global ftp_upload_filesize
 	debug("Uploading "+short_filename+" to FTP")
+	debug("Overwrite forced: "+str(overwrite))
 	debug("Caching file from S3")
 	filekey = bucket.get_key(short_filename)
 	ftp_upload_filesize = filekey.size
@@ -223,7 +231,18 @@ def upload_to_ftp(short_filename):
 	filekey.get_contents_to_filename(tempdir+short_filename)
 	debug("Uploading to FTP")
 	host = ftputil.FTPHost(ftp_host,ftp_username,ftp_password)
-	host.upload(tempdir+short_filename,short_filename,mode='b',callback=ftpcallback)
+	if host.path.exists(short_filename):
+		debug("File exists on FTP")
+	if not overwrite and host.path.exists(short_filename):
+		size_on_disk = os.lstat(tempdir+short_filename).st_size
+		size_on_server = host.lstat(short_filename).st_size
+		debug("Size on disk: "+str(size_on_disk)+" Size on server:"+str(size_on_server))
+		if size_on_disk != size_on_server:
+			debug("Different. Re-uploading")
+			host.upload(tempdir+short_filename,short_filename,mode='b',callback=ftpcallback)
+	else:
+		debug("Overwrite flag or lack of FTP presence forces upload")
+		host.upload(tempdir+short_filename,short_filename,mode='b',callback=ftpcallback)
 	host.close()
 
 def ftpcallback(chunk):
