@@ -13,6 +13,7 @@ import os
 import sys
 import pika
 import boto
+import shutil
 from loggly import logglyHandler,JsonFormatter
 
 sigint_caught=False
@@ -26,7 +27,7 @@ ftp_username = ''
 ftp_password = ''
 
 metafile = 'posterfiles/meta.js'
-tempdir = '/tmp/'
+tempdir = '/tmp/thumbnailgenerator/'
 bucket = {}
 s3_bucket_name = ''
 logglyurl=''
@@ -86,6 +87,14 @@ def main():
 	else:
 		file(pidfile, 'w').write(pid)
 
+	logging.debug("Checking if tempdir %s exists"%tempdir)
+	if os.path.exists(tempdir):
+		logging.debug("It does, removing it")
+		shutil.rmtree(tempdir)
+	logging.info("Creating tempdir: %s"%tempdir)
+	os.makedirs(tempdir)
+
+
 	bucket = boto.connect_s3().get_bucket(s3_bucket_name)
 
 	logging.debug("Opening rMQ connection")
@@ -111,9 +120,19 @@ def process_msg(ch,method,properties,body):
 			if decoded_msg['command'] == 'add':
 				filename = decoded_msg['filename']
 				if not bucket.get_key(filename) == None and bucket.get_key(filename).exists():
+					logging.debug("Downloading %s to temp directory"%filename)
+					filekey = bucket.get_key(filename)
+					fullpath = tempdir+filename
+					filekey.get_contents_to_filename(fullpath)
+					#Set the permissions through chmod
+					os.chmod(fullpath,stat.S_IRUSR)
+
 					meta[filename] = get_metadata(filename)
 					generate_posterfiles(filename)
 					upload_to_ftp(filename)
+					logging.debug("Removing locally cached %s"%fullpath)
+					
+					os.remove(fullpath)
 					commit_metadata()
 				else:
 					error(filename + " doesn't seem to exist")
@@ -165,6 +184,8 @@ def process_msg(ch,method,properties,body):
 			logging.error("Message not understood")
 	except json.decoder.JSONDecodeError:
 		logging.error("Message not understood. Exception raised decoding.")
+#	except:
+#		logging.error("Unexpected error: %s"%sys.exc_info()[0])
 	if sigint_caught:
 		commit_metadata()
 		#Clean up PID file
@@ -196,13 +217,6 @@ def generate_posterfiles(filename):
 	#Figure out the intervals at which we need to take posterfiles
 	durations=meta[filename]['duration'].split(":")
 	totallength = int((int(durations[0])*3600)+(int(durations[1])*60)+float(durations[2]))
-	logging.debug("Copying file to tmp")
-	#Dump the video in a tempdirectory to reduce latency
-	bucket.get_key(filename).get_contents_to_filename(tempdir+filename)
-	
-	#Set the permissions through chmod
-	os.chmod(tempdir+filename,stat.S_IRUSR)
-
 
 	interval = float(totallength) / (number_of_posterfiles+1);
 	intervals = []
@@ -220,7 +234,7 @@ def generate_posterfiles(filename):
 			cmd = ["ffmpeg","-ss",str(val),"-i",tempdir+filename,"-an","-f","mjpeg","-qmin","0.8","-qmax","0.8","-t","1","-r","1","-y",tempdir+posterfile]
 			subprocess.Popen(cmd,stderr=subprocess.PIPE).communicate()[1]
 			attempts=0
-			if os.path.getsize(tempdir+posterfile) and attempts < 30 == 0:
+			if os.path.getsize(tempdir+posterfile)==0 and attempts < 30:
 				val=val+1
 				attempts=attempts+1
 				logging.warn("Posterfile was zero sized. Increasing time to %s"%val)
@@ -236,7 +250,8 @@ def generate_posterfiles(filename):
 			logging.info("Uploading %s"%posterfile)
 			bucket.new_key('posterfiles/'+posterfile).set_contents_from_filename(tempdir+posterfile)
 			bucket.new_key('posterfiles/'+thumbnail_posterfile).set_contents_from_filename(tempdir+thumbnail_posterfile)
-	os.remove(tempdir+filename)
+			os.remove(tempdir+thumbnail_posterfile)
+			os.remove(tempdir+posterfile)
 
 ftp_upload_filesize=0
 ftp_upload_progress=0
@@ -247,11 +262,10 @@ def upload_to_ftp(short_filename,overwrite=False):
 	global ftp_upload_filesize
 	logging.info("Uploading %s to FTP"%short_filename)
 	logging.debug("Overwrite forced: %s"%overwrite)
-	logging.debug("Caching file from S3")
+	logging.debug("Reading filesize from S3")
 	filekey = bucket.get_key(short_filename)
 	ftp_upload_filesize = filekey.size
 	ftp_upload_progress=0
-	filekey.get_contents_to_filename(tempdir+short_filename)
 	logging.debug("Uploading to FTP")
 	host = ftputil.FTPHost(ftp_host,ftp_username,ftp_password)
 	if host.path.exists(short_filename):
@@ -279,12 +293,9 @@ def ftpcallback(chunk):
 def get_metadata(short_filename):
 	global meta
 	"""Expects short filename"""
-	logging.debug("Downloading %s to temp directory"%short_filename)
-	filekey = bucket.get_key(short_filename)
-	filename = tempdir+short_filename
-	filekey.get_contents_to_filename(filename)
 	logging.info("Extracting metadata from %s"%short_filename)
 	#Grab file info from ffmpeg
+	filename = tempdir+short_filename
 	metadata_str = subprocess.Popen(['ffmpeg','-i',filename],stderr=subprocess.PIPE).communicate()[1]
 	metadata_parts = re.findall(r'[^,\|\n]+',metadata_str.replace(': ','|'))
 	metadata={}
