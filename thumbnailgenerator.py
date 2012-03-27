@@ -13,6 +13,7 @@ import os
 import sys
 import pika
 import boto
+from loggly import logglyHandler
 
 sigint_caught=False
 number_of_posterfiles=10
@@ -28,7 +29,7 @@ metafile = 'posterfiles/meta.js'
 tempdir = '/tmp/'
 bucket = {}
 s3_bucket_name = ''
-
+logglyurl=''
 meta = {}
 
 try:
@@ -40,7 +41,7 @@ except ImportError:
 def signal_handler(signal, frame):
 	global sigint_caught
 	if sigint_caught:
-		print 'SIGINT caught, exiting'
+		log.warn('SIGINT caught, exiting')
 		commit_metadata()
 
 		#Clean up PID file
@@ -48,7 +49,7 @@ def signal_handler(signal, frame):
 	
 		sys.exit(0)
 	else:
-		print 'SIGINT caught, quitting after next job'
+		log.warn('SIGINT caught, quitting after next job')
 		sigint_caught=True
 
 def main():
@@ -58,10 +59,18 @@ def main():
 			format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
 			datefmt='%m-%d %H:%M',
 			filemode='w')
+
 	console = logging.StreamHandler()
 	console.setLevel(logging.DEBUG)
 	formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
 	console.setFormatter(formatter)
+
+	http_handler = logglyHandler(logglyurl)
+	http_handler.setLevel(logging.INFO)
+	loggly_formatter = logging.Formatter('%(asctime)s severity=%(levelname)s,%(message)s')
+	http_handler.setFormatter(loggly_formatter)
+	logging.getLogger('').addHandler(http_handler)
+
 	logging.getLogger('').addHandler(console)
 	logging.getLogger('boto').setLevel(logging.ERROR)
 	logging.info("Starting up")
