@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import logging
+import socket
 import ftputil
 import stat
 import re
@@ -57,13 +58,13 @@ def main():
 	global meta
 	global bucket
 	logging.basicConfig(filename='thumbnailgenerator.log', level=logging.DEBUG,
-			format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+			format='%(asctime)s %(module)-12s %(funcName)-2s %(levelname)-8s %(message)s',
 			datefmt='%m-%d %H:%M',
 			filemode='w')
 
 	console = logging.StreamHandler()
 	console.setLevel(logging.DEBUG)
-	formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
+	formatter = logging.Formatter('%(module)-12s %(funcName)-2s: %(levelname)-8s %(message)s')
 	console.setFormatter(formatter)
 
 	http_handler = logglyHandler(logglyurl)
@@ -229,27 +230,44 @@ def generate_posterfiles(filename):
 		thumbnail_posterfile = filename + "_" + str(idx) + ".th.jpg"
 		logging.info("Generating %s@%s"%(posterfile,val))
 		output_success=False
+		output_failure=False
 		#Try and generate a posterfile at the given time. If failure, add a second until wins.
-		while not output_success:
+		attempts=0
+		while not output_success and not output_failure:
 			cmd = ["ffmpeg","-ss",str(val),"-i",tempdir+filename,"-an","-f","mjpeg","-qmin","0.8","-qmax","0.8","-t","1","-r","1","-y",tempdir+posterfile]
 			subprocess.Popen(cmd,stderr=subprocess.PIPE).communicate()[1]
-			attempts=0
 			if os.path.getsize(tempdir+posterfile)==0 and attempts < 30:
 				val=val+1
 				attempts=attempts+1
-				logging.warn("Posterfile was zero sized. Increasing time to %s"%val)
+				logging.warn("Posterfile was zero sized. Increasing time to %s. Attempt number %s"%(val,attempts))
 			elif attempts < 30:
 				output_success=True
 			else: 
 				logging.error("Failed to generate %s"%posterfile)
+				output_failure=True
 		if output_success:
 			logging.info("Generating %s"%thumbnail_posterfile)
 			#Use Imagemagick to convert posterfile to thumbnail
 			th_cmd = ["convert",tempdir+posterfile,"-resize",thumbnail_dimension+"^","-gravity","center","-extent",thumbnail_dimension,"-quality",str(thumbnail_quality),tempdir+thumbnail_posterfile]
 			th_out = subprocess.Popen(th_cmd,stderr=subprocess.PIPE).communicate()[1]
-			logging.info("Uploading %s"%posterfile)
-			bucket.new_key('posterfiles/'+posterfile).set_contents_from_filename(tempdir+posterfile)
-			bucket.new_key('posterfiles/'+thumbnail_posterfile).set_contents_from_filename(tempdir+thumbnail_posterfile)
+			uploaded = False
+			while not uploaded:
+				try:
+					logging.info("Uploading %s"%posterfile)
+					bucket.new_key('posterfiles/'+posterfile).set_contents_from_filename(tempdir+posterfile)
+					uploaded=True
+				except socket.error:
+					logging.error("Socket Error uploading file. Retrying")
+					pass
+			uploaded = False
+			while not uploaded:
+				try:
+					logging.info("Uploading %s"%thumbnail_posterfile)
+					bucket.new_key('posterfiles/'+thumbnail_posterfile).set_contents_from_filename(tempdir+thumbnail_posterfile)
+					uploaded = True
+				except socket.error:
+					logging.error("Socket Error uploading file. Retrying")
+					pass
 			os.remove(tempdir+thumbnail_posterfile)
 			os.remove(tempdir+posterfile)
 
