@@ -47,7 +47,10 @@ class JsonFormatter(logging.Formatter):
 				log_record[formatter] = mappings[formatter](record)
 			except KeyError:
 				log_record[formatter] = record.__dict__[formatter]
-
+		log_record['severity']=log_record['levelname']
+		del log_record['levelname']
+		if log_record['severity'] == 'WARNING':
+			log_record['severity'] == 'WARN'
 		return json.dumps(log_record)
 
 def create_timestamp(record):
