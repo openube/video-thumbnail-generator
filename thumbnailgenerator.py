@@ -133,7 +133,7 @@ def process_msg(ch,method,properties,body):
 					upload_to_ftp(filename)
 					logging.debug("Removing locally cached %s"%fullpath)
 					
-					os.remove(fullpath)
+					os.unlink(fullpath)
 					commit_metadata()
 				else:
 					error(filename + " doesn't seem to exist")
@@ -177,7 +177,14 @@ def process_msg(ch,method,properties,body):
 					firstpart,extension = splitext(key)
 					#Are we a video file?
 					if extension in ['.mp4','.m4v','.mov','.mkv','.wmv','.avi'] and not "/" in key and key not in ftplist:
+						logging.debug("Downloading %s to temp directory"%key)
+						filekey = bucket.get_key(key)
+						fullpath = tempdir+key
+						filekey.get_contents_to_filename(fullpath)
+						#Set the permissions through chmod
+						os.chmod(fullpath,stat.S_IRUSR)
 						upload_to_ftp(key)
+						os.unlink(fullpath)
 
 			else:
 				logging.error("Message not understood")
