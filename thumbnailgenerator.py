@@ -64,7 +64,7 @@ def main():
 
 	console = logging.StreamHandler()
 	console.setLevel(logging.DEBUG)
-	formatter = logging.Formatter('%(module)-12s %(funcName)-2s: %(levelname)-8s %(message)s')
+	formatter = logging.Formatter('%(asctime)s - %(module)-12s %(funcName)-2s: %(levelname)-8s %(message)s')
 	console.setFormatter(formatter)
 
 	http_handler = logglyHandler(logglyurl)
@@ -321,7 +321,7 @@ def get_metadata(short_filename):
 	logging.info("Extracting metadata from %s"%short_filename)
 	#Grab file info from ffmpeg
 	filename = tempdir+short_filename
-	metadata_str = subprocess.Popen(['ffmpeg','-i',filename],stderr=subprocess.PIPE).communicate()[1]
+	metadata_str = subprocess.Popen(['avconv','-i',filename],stderr=subprocess.PIPE).communicate()[1]
 	metadata_parts = re.findall(r'[^,\|\n]+',metadata_str.replace(': ','|'))
 	metadata={}
 	val=''
