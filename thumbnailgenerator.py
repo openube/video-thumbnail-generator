@@ -60,7 +60,7 @@ def main():
 	logging.basicConfig(filename='thumbnailgenerator.log', level=logging.DEBUG,
 			format='%(asctime)s %(module)-12s %(funcName)-2s %(levelname)-8s %(message)s',
 			datefmt='%m-%d %H:%M',
-			filemode='w')
+			filemode='a')
 
 	console = logging.StreamHandler()
 	console.setLevel(logging.DEBUG)
@@ -136,7 +136,7 @@ def process_msg(ch,method,properties,body):
 					os.unlink(fullpath)
 					commit_metadata()
 				else:
-					error(filename + " doesn't seem to exist")
+					logging.error(filename + " doesn't seem to exist")
 			elif decoded_msg['command'] == 'purgemetadata':
 				logging.info("Purging extraneous metadata")
 				meta_to_purge = []
