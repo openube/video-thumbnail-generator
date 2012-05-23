@@ -120,7 +120,7 @@ def process_msg(ch,method,properties,body):
 		if 'command' in decoded_msg:
 			if decoded_msg['command'] == 'add':
 				filename = decoded_msg['filename']
-				if not bucket.get_key(filename) == None and bucket.get_key(filename).exists():
+				if not bucket.get_key(filename) == None and bucket.get_key(filename).exists():# and not filename.startswith("._"):
 					logging.debug("Downloading %s to temp directory"%filename)
 					filekey = bucket.get_key(filename)
 					fullpath = tempdir+filename
@@ -129,8 +129,12 @@ def process_msg(ch,method,properties,body):
 					os.chmod(fullpath,stat.S_IRUSR)
 
 					meta[filename] = get_metadata(filename)
-					generate_posterfiles(filename)
-					upload_to_ftp(filename)
+					if meta[filename] == None:
+						logging.warn("Metadata is none. Removing and skipping")
+						meta.pop(filename)
+					else:
+						generate_posterfiles(filename)
+						upload_to_ftp(filename)
 					logging.debug("Removing locally cached %s"%fullpath)
 					
 					os.unlink(fullpath)
@@ -321,7 +325,12 @@ def get_metadata(short_filename):
 	logging.info("Extracting metadata from %s"%short_filename)
 	#Grab file info from ffmpeg
 	filename = tempdir+short_filename
+
 	metadata_str = subprocess.Popen(['avconv','-i',filename],stderr=subprocess.PIPE).communicate()[1]
+	logging.debug("metadata received %s"%metadata_str)
+	if metadata_str.strip().endswith('Invalid data found when processing input'):
+		logging.info("Invalid video. Returning None")	
+		return None
 	metadata_parts = re.findall(r'[^,\|\n]+',metadata_str.replace(': ','|'))
 	metadata={}
 	val=''
